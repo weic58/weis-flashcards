@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wei's Flashcards</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%2250%25%22 x=%2250%25%22 dominant-baseline=%22central%22 text-anchor=%22middle%22 font-size=%2280%22>📝</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+    <style>
+        .perspective-1000 { perspective: 1000px; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
+        .card-inner { transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1); }
+        .flipped .card-inner { transform: rotateY(180deg); }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+
+        .card-base { position: absolute; width: 100%; height: 100%; transition: all 0.3s ease-out; }
+        .pos-left { transform: translateX(-110%) scale(0.85); filter: blur(4px); opacity: 0.5; cursor: pointer; }
+        .pos-center { transform: translateX(0) scale(1); filter: blur(0); opacity: 1; z-index: 10; }
+        .pos-right { transform: translateX(110%) scale(0.85); filter: blur(4px); opacity: 0.5; cursor: pointer; }
+        .no-transition { transition: none !important; }
+    </style>
+</head>
+<body class="bg-slate-50 text-gray-800 font-sans flex flex-col min-h-screen">
+
+    <header class="bg-indigo-600 text-white p-4 shadow-md flex justify-between items-center z-10 sticky top-0 shrink-0 h-16">
+        <h1 class="text-2xl font-bold cursor-pointer whitespace-nowrap" onclick="navigate('home')">📝 Wei's Flashcards</h1>
+        
+        <div class="flex items-center gap-3 relative">
+            <div id="search-bar-container" class="absolute right-full mr-2 w-0 opacity-0 overflow-hidden transition-all duration-300 flex items-center bg-white rounded-full h-9 shadow-lg z-20">
+                <input type="text" id="header-search-input" class="outline-none text-sm w-full text-gray-700 bg-transparent px-3" placeholder="搜尋題目或答案..." onkeydown="if(event.key==='Enter') executeSearch()">
+                <button onclick="executeSearch()" class="text-gray-400 hover:text-indigo-500 text-sm mr-3 whitespace-nowrap">送出</button>
+            </div>
+            
+            <button onclick="toggleSearch(event)" id="btn-toggle-search" class="hover:text-indigo-200 text-xl font-bold transition-all" title="搜尋">🔍</button>
+            <button onclick="navigate('stats')" class="hover:text-indigo-200 text-xl" title="統計">📊</button>
+            <button onclick="navigate('admin')" class="hover:text-indigo-200 text-xl" title="設定卡片庫">⚙️</button>
+            <button onclick="handleAuthClick()" id="nav-auth-btn" class="hover:text-indigo-200 text-xl" title="會員登入">👤</button>
+        </div>
+    </header>
+
+    <div id="login-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex justify-center items-center z-50">
+        <div class="bg-white p-6 rounded-xl shadow-lg w-80 relative">
+            <button onclick="closeLoginModal()" class="absolute top-2 right-3 text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
+            <h3 class="text-xl font-bold mb-4 text-gray-800 text-center">會員登入</h3>
+            <p class="text-sm text-gray-500 text-center mb-4">登入以建立您專屬的私人單字庫</p>
+            <button onclick="googleLogin()" class="w-full bg-white border border-gray-300 text-gray-700 font-bold py-2 rounded mb-4 hover:bg-gray-50 flex justify-center items-center gap-2 shadow-sm transition">
+                <svg class="w-5 h-5" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                使用 Google 帳號登入
+            </button>
+        </div>
+    </div>
+
+    <main class="flex-grow p-4 relative overflow-hidden flex flex-col items-center" id="main-content">
+        
+        <div id="view-home" class="view-section w-full max-w-3xl flex-grow flex-col gap-6 flex">
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-indigo-100 w-full">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-lg font-bold text-indigo-700 flex items-center gap-2">🎯 學習範圍篩選</h3>
+                    <div class="text-sm">
+                        <button onclick="toggleAllFilters(true)" class="text-indigo-500 hover:text-indigo-700 mr-2">全選</button>
+                        <button onclick="toggleAllFilters(false)" class="text-gray-400 hover:text-gray-600">全不選</button>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-400 mb-3">勾選你想複習的類別，將會影響下方「特別企劃」與「統計資料」的範圍。</p>
+                <div id="multi-category-filter" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <div class="w-full">
+                <h3 class="text-xl font-bold text-gray-700 mb-4 flex items-center gap-2"><span class="text-2xl">✨</span> 特別企劃 (依照勾選範圍)</h3>
+                <div id="special-list" class="grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
+            </div>
+            <div class="w-full">
+                <h3 class="text-xl font-bold text-gray-700 mb-4 flex items-center gap-2">📂 個別類別 (直接進入)</h3>
+                <div id="category-list" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"></div>
+            </div>
+        </div>
+
+        <div id="view-card" class="view-section hidden w-full flex-grow flex-col items-center justify-start">
+            <div class="w-full flex flex-col items-center pt-4 shrink-0">
+                <h2 id="card-category-title" class="text-lg font-bold text-gray-600 mb-4"></h2>
+                <div class="flex gap-2 mb-2 bg-gray-200 p-1 rounded-full">
+                    <button onclick="setCardMode('flashcard')" id="btn-mode-flashcard" class="px-6 py-2 rounded-full font-bold transition-colors">單字卡</button>
+                    <button onclick="setCardMode('list')" id="btn-mode-list" class="px-6 py-2 rounded-full font-bold transition-colors">清單</button>
+                </div>
+            </div>
+
+            <div class="w-full flex-grow flex flex-col items-center justify-start pb-8 overflow-y-auto overflow-x-hidden">
+                <div id="flashcard-container" class="w-full max-w-sm flex flex-col items-center mt-4" style="touch-action: pan-y;">
+                    <div id="carousel-wrapper" class="relative w-full h-80 flex justify-center items-center">
+                        <div id="card-left" class="card-base pos-left hidden" onclick="prevCard()">
+                            <div class="absolute inset-0 shadow-lg rounded-2xl bg-white border-2 border-gray-200 flex flex-col items-center justify-center p-6 text-gray-400">
+                                <span class="text-xs font-bold absolute top-4 left-4">Q.</span>
+                                <span id="card-cat-left" class="absolute top-4 right-4 bg-gray-100 text-gray-400 px-2 py-1 rounded-full text-xs font-bold hidden"></span>
+                                <p id="card-q-left" class="text-lg font-semibold text-center"></p>
+                                <span id="card-note-left" class="absolute bottom-4 left-1/2 -translate-x-1/2 text-gray-300 text-[10px] hidden"></span>
+                            </div>
+                        </div>
+
+                        <div id="flashcard" class="card-base pos-center cursor-pointer perspective-1000" onclick="toggleCard()">
+                            <div class="card-inner relative w-full h-full transform-style-3d shadow-xl rounded-2xl">
+                                <div class="absolute inset-0 backface-hidden bg-white rounded-2xl flex flex-col items-center justify-center p-6 border-4 border-indigo-500">
+                                    <span class="text-sm text-indigo-500 font-bold absolute top-4 left-4">Q.</span>
+                                    <span id="card-cat-center" class="absolute top-4 right-4 bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full text-xs font-bold hidden shadow-sm border border-indigo-100"></span>
+                                    <p id="card-question" class="text-2xl font-bold text-center text-gray-800"></p>
+                                    <span id="card-note-center" class="absolute bottom-4 left-1/2 -translate-x-1/2 text-gray-400 text-xs hidden whitespace-nowrap"></span>
+                                    <span class="text-xs text-gray-400 absolute bottom-4 animate-pulse right-4">點擊翻面</span>
+                                </div>
+                                <div class="absolute inset-0 backface-hidden bg-indigo-600 rounded-2xl flex flex-col items-center justify-center p-6 rotate-y-180 text-white">
+                                    <span class="text-sm text-indigo-200 font-bold absolute top-4 left-4">A.</span>
+                                    <span id="card-cat-center-back" class="absolute top-4 right-4 bg-indigo-700 text-white px-2 py-1 rounded-full text-xs font-bold hidden shadow-sm"></span>
+                                    <p id="card-answer" class="text-2xl font-bold text-center"></p>
+                                    <span id="card-note-center-back" class="absolute bottom-4 left-1/2 -translate-x-1/2 text-indigo-200 text-xs hidden whitespace-nowrap"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="card-right" class="card-base pos-right hidden" onclick="nextCard()">
+                            <div class="absolute inset-0 shadow-lg rounded-2xl bg-white border-2 border-gray-200 flex flex-col items-center justify-center p-6 text-gray-400">
+                                <span class="text-xs font-bold absolute top-4 left-4">Q.</span>
+                                <span id="card-cat-right" class="absolute top-4 right-4 bg-gray-100 text-gray-400 px-2 py-1 rounded-full text-xs font-bold hidden"></span>
+                                <p id="card-q-right" class="text-lg font-semibold text-center"></p>
+                                <span id="card-note-right" class="absolute bottom-4 left-1/2 -translate-x-1/2 text-gray-300 text-[10px] hidden"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="interaction-bar" class="flex justify-center gap-8 w-full mt-6 px-2 z-20">
+                        <button onclick="toggleInteract('favs')" id="btn-fav" class="flex items-center gap-1 text-gray-400 hover:text-pink-500 transition"><span class="text-2xl">❤️</span> <span class="text-xs">收藏</span></button>
+                        <button onclick="toggleInteract('likes')" id="btn-like" class="flex items-center gap-1 text-gray-400 hover:text-green-500 transition"><span class="text-2xl">✅</span> <span class="text-xs">已熟記</span></button>
+                        <button onclick="toggleInteract('dislikes')" id="btn-dislike" class="flex items-center gap-1 text-gray-400 hover:text-red-500 transition"><span class="text-2xl">❌</span> <span class="text-xs">不熟</span></button>
+                    </div>
+                </div>
+                <div id="list-container" class="hidden w-full max-w-2xl flex-col gap-4 overflow-y-auto mt-4" style="max-height: 100%;"></div>
+            </div>
+        </div>
+
+        <div id="view-admin" class="view-section hidden w-full max-w-5xl flex-grow">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold flex items-center">
+                    卡片庫設定 
+                </h2>
+                <div class="flex gap-2">
+                    <button onclick="userLogout()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded font-bold transition text-sm">登出</button>
+                </div>
+            </div>
+
+            <div class="bg-white p-4 rounded-xl shadow mb-6 border-l-4 border-purple-400">
+                <h3 class="text-lg font-bold mb-2 text-purple-700">管理類別</h3>
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <input type="text" id="add-new-category-input" placeholder="輸入新類別名稱 (如：多益單字、微積分)..." class="border p-2 rounded flex-1 focus:outline-none focus:border-purple-400">
+                    <button onclick="addNewCategory()" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 transition whitespace-nowrap">新增類別</button>
+                </div>
+                <div id="admin-category-list" class="mt-4 flex flex-wrap gap-2"></div>
+            </div>
+            
+            <div class="bg-white p-4 rounded-xl shadow mb-6 border-l-4 border-indigo-400">
+                <h3 class="text-lg font-bold mb-2 text-indigo-700">新增卡片</h3>
+                <div class="flex flex-col md:flex-row gap-2 items-center w-full">
+                    <select id="add-category-select" class="border p-2 rounded w-full md:w-1/6 focus:outline-none focus:border-indigo-400 bg-white"></select>
+                    <input type="text" id="add-question" placeholder="正面內容 (單字/題目)" class="border p-2 rounded w-full md:flex-1 focus:outline-none focus:border-indigo-400">
+                    <input type="text" id="add-answer" placeholder="背面內容 (解釋/答案)" class="border p-2 rounded w-full md:flex-1 focus:outline-none focus:border-indigo-400">
+                    <input type="text" id="add-note" placeholder="備註(選填，如詞性)" class="border p-2 rounded w-full md:w-1/6 focus:outline-none focus:border-indigo-400 text-sm">
+                    <button onclick="addCard()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition whitespace-nowrap w-full md:w-auto">新增</button>
+                </div>
+            </div>
+
+            <div class="bg-white p-4 rounded-xl shadow mb-6 border-l-4 border-blue-400">
+                <h3 class="text-lg font-bold mb-2 text-blue-700">匯入 / 匯出 (CSV)</h3>
+                <div class="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+                    <input type="file" id="csv-file" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                    <button onclick="importCSV()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition whitespace-nowrap mt-2 sm:mt-0">上傳匯入</button>
+                    <button onclick="exportCSV()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2">匯出 CSV</button>
+                </div>
+            </div>
+
+            <div class="bg-white p-4 rounded-xl shadow overflow-x-auto">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 gap-2">
+                    <h3 class="text-lg font-bold">現有卡片列表</h3>
+                    <div class="flex flex-wrap gap-2 w-full sm:w-auto">
+                        <input type="text" id="admin-search-input" placeholder="搜尋內容..." oninput="renderAdmin()" class="border p-1 rounded focus:outline-none focus:border-indigo-400 text-sm flex-1 sm:flex-none">
+                        <select id="admin-sort-select" onchange="renderAdmin()" class="border p-1 rounded focus:outline-none focus:border-indigo-400 text-sm bg-gray-50">
+                            <option value="newest">最新新增</option>
+                            <option value="oldest">最舊新增</option>
+                        </select>
+                        <select id="admin-filter-category" onchange="renderAdmin()" class="border p-1 rounded focus:outline-none focus:border-indigo-400 text-sm bg-gray-50">
+                            <option value="all">全部類別</option>
+                        </select>
+                    </div>
+                </div>
+                <table class="w-full text-left border-collapse min-w-[800px] text-sm mt-2">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="p-2 border font-semibold w-[15%]">類別</th>
+                            <th class="p-2 border font-semibold w-[28%]">正面 (Q)</th>
+                            <th class="p-2 border font-semibold w-[28%]">背面 (A)</th>
+                            <th class="p-2 border font-semibold w-[15%] text-center">備註</th>
+                            <th class="p-2 border font-semibold text-center w-[14%]">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-table-body"></tbody>
+                </table>
+                <div class="mt-6 text-right">
+                    <button onclick="clearAllData()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 text-sm transition">清空私人庫</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-stats" class="view-section hidden w-full max-w-5xl flex-grow">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold flex items-center gap-2">📊 學習統計 <span class="text-sm font-normal text-gray-500">(根據首頁勾選的範圍)</span></h2>
+            </div>
+            
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-white p-4 rounded-xl shadow text-center border-2 border-indigo-400 bg-indigo-50"><p class="text-gray-500 text-sm">範圍內總卡片數</p><p class="text-3xl font-bold text-gray-800" id="stat-total">0</p></div>
+                <div class="bg-white p-4 rounded-xl shadow text-center border-2 border-transparent"><p class="text-gray-500 text-sm">已熟記 ✅</p><p class="text-3xl font-bold text-green-500" id="stat-likes">0</p></div>
+                <div class="bg-white p-4 rounded-xl shadow text-center border-2 border-transparent"><p class="text-gray-500 text-sm">不熟 ❌</p><p class="text-3xl font-bold text-red-500" id="stat-dislikes">0</p></div>
+                <div class="bg-white p-4 rounded-xl shadow text-center border-2 border-transparent"><p class="text-gray-500 text-sm">已收藏 ❤️</p><p class="text-3xl font-bold text-pink-500" id="stat-favs">0</p></div>
+            </div>
+
+            <div class="bg-white p-4 rounded-xl shadow flex flex-col items-center w-full">
+                <h3 class="text-lg font-bold mb-2">範圍內各類別卡片數量分佈</h3>
+                <div class="w-full relative" style="height: 350px;"><canvas id="leaderboardChart"></canvas></div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="bg-slate-800 text-gray-400 flex justify-center items-center gap-4 p-4 mt-auto text-sm shrink-0 z-20">
+        <p>Created by weic58 & Gemini, 2026.</p>
+    </footer>
+
+    <script>
+        // ==========================================
+        // Firebase 設定與權限 (請修改為您的專案資料)
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyCCzAI6emfFxZjKGuxwrQ2OnvWH5yz82HA",
+            authDomain: "weisflashcards.firebaseapp.com",
+            databaseURL: "https://weisflashcards-default-rtdb.firebaseio.com",
+            projectId: "weisflashcards",
+            storageBucket: "weisflashcards.firebasestorage.app",
+            messagingSenderId: "1041449372510",
+            appId: "1:1041449372510:web:54e47288647507d4859dcf",
+            measurementId: "G-JBH1DBFN1E"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database(); 
+        const auth = firebase.auth();
+
+        let currentUser = null;
+        let cards = [];
+        let categories = [];
+        let activeFilters = new Set(); // 儲存勾選的類別
+
+        let currentCategoryCards = [];
+        let currentIndex = 0;
+        let chartInstance = null;
+        let currentMode = 'flashcard'; 
+        let isAnimating = false;
+
+        // 監聽登入狀態
+        auth.onAuthStateChanged(user => {
+            currentUser = user;
+            const navBtn = document.getElementById('nav-auth-btn');
+
+            if(user) {
+                navBtn.innerText = '🚪'; navBtn.title = '登出';
+                loadUserData(); // 載入私人資料庫
+                document.getElementById('login-modal').classList.add('hidden');
+            } else {
+                navBtn.innerText = '👤'; navBtn.title = '會員登入';
+                cards = []; categories = []; activeFilters.clear();
+                if(!document.getElementById('view-home').classList.contains('hidden')) {
+                    renderHome();
+                } else {
+                    navigate('home');
+                }
+                document.getElementById('login-modal').classList.remove('hidden');
+            }
+        });
+
+        // 從 Firebase 載入使用者的私人資料庫
+        function loadUserData() {
+            if (!currentUser) return;
+            const userRef = db.ref(`users/${currentUser.uid}`);
+            userRef.on('value', snapshot => {
+                const data = snapshot.val() || { cards: [], categories: [] };
+                cards = data.cards || [];
+                categories = data.categories || [];
+                
+                // 更新篩選器 (若有新類別預設勾選，被砍掉的就移除)
+                let newFilters = new Set();
+                categories.forEach(c => {
+                    if (activeFilters.has(c) || activeFilters.size === 0) newFilters.add(c);
+                });
+                if (activeFilters.size === 0) newFilters = new Set(categories); // 第一次載入全選
+                activeFilters = newFilters;
+
+                renderHome(); 
+                if(!document.getElementById('view-admin').classList.contains('hidden')) renderAdmin();
+                if(!document.getElementById('view-stats').classList.contains('hidden')) renderStats();
+                if(!document.getElementById('view-card').classList.contains('hidden') && currentMode === 'flashcard') updateCardDisplay(true);
+            });
+        }
+
+        // 將變更存回 Firebase
+        function saveData() {
+            if (currentUser) {
+                db.ref(`users/${currentUser.uid}`).set({ cards: cards, categories: categories }).catch(err => {
+                    alert(`寫入雲端失敗！\n錯誤原因：${err.message}`);
+                });
+            } else {
+                alert("請先登入！");
+            }
+        }
+
+        function normalizeText(text) { return String(text).replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '').toLowerCase(); }
+        function findDuplicateIndex(q, a) {
+            const normQ = normalizeText(q); const normA = normalizeText(a);
+            if (!normQ || !normA) return -1;
+            return cards.findIndex(j => {
+                const jq = normalizeText(j.question); const ja = normalizeText(j.answer);
+                return (jq.includes(normQ) || normQ.includes(jq)) && (ja.includes(normA) || normA.includes(ja));
+            });
+        }
+
+        function navigate(view) {
+            if (view !== 'home' && !currentUser) {
+                document.getElementById('login-modal').classList.remove('hidden');
+                return;
+            }
+            document.querySelectorAll('.view-section').forEach(el => { el.classList.add('hidden'); el.classList.remove('flex'); });
+            const target = document.getElementById(`view-${view}`);
+            target.classList.remove('hidden');
+            if (view === 'card') target.classList.add('flex'); 
+            if (view === 'home') renderHome();
+            if (view === 'admin') renderAdmin();
+            if (view === 'stats') renderStats();
+        }
+
+        function toggleSearch(event) {
+            if (event) event.stopPropagation(); 
+            const container = document.getElementById('search-bar-container');
+            const btn = document.getElementById('btn-toggle-search');
+            
+            if (container.classList.contains('w-0')) {
+                container.classList.remove('w-0', 'opacity-0');
+                container.classList.add('w-48', 'sm:w-64', 'opacity-100'); 
+                btn.innerText = '✖️'; btn.classList.remove('font-bold');
+                document.getElementById('header-search-input').focus();
+            } else {
+                container.classList.add('w-0', 'opacity-0');
+                container.classList.remove('w-48', 'sm:w-64', 'opacity-100'); 
+                btn.innerText = '🔍'; btn.classList.add('font-bold');
+                document.getElementById('header-search-input').value = '';
+            }
+        }
+
+        document.addEventListener('click', function(event) {
+            const container = document.getElementById('search-bar-container');
+            const btn = document.getElementById('btn-toggle-search');
+            if (!container.classList.contains('w-0') && !container.contains(event.target) && event.target !== btn) {
+                toggleSearch();
+            }
+        });
+
+        function executeSearch() {
+            const kw = document.getElementById('header-search-input').value.trim().toLowerCase();
+            if(!kw) return;
+            currentCategoryCards = getFilteredCards().filter(j => j.question.toLowerCase().includes(kw) || j.answer.toLowerCase().includes(kw));
+            if (currentCategoryCards.length === 0) { alert(`在目前勾選的範圍內，找不到包含「${kw}」的卡片喔！`); return; }
+            document.getElementById('card-category-title').innerText = `🔍 搜尋結果：${kw}`;
+            currentIndex = 0; setCardMode('list'); navigate('card');
+            toggleSearch(); 
+        }
+
+        // ==========================================
+        // 核心邏輯：取得「有勾選」的卡片
+        // ==========================================
+        function getFilteredCards() {
+            if (activeFilters.size === 0) return []; // 如果一個都沒勾，回傳空
+            return cards.filter(c => activeFilters.has(c.category));
+        }
+
+        function toggleFilter(category, isChecked) {
+            if (isChecked) activeFilters.add(category);
+            else activeFilters.delete(category);
+            renderHome(); // 更新畫面 UI 狀態
+        }
+
+        function toggleAllFilters(checkAll) {
+            if (checkAll) {
+                categories.forEach(c => activeFilters.add(c));
+            } else {
+                activeFilters.clear();
+            }
+            renderHome();
+        }
+
+        function renderHome() {
+            if (!currentUser) {
+                document.getElementById('special-list').innerHTML = '<p class="text-gray-400">登入後即可看見專屬功能</p>';
+                document.getElementById('category-list').innerHTML = '<p class="text-gray-400">登入後即可建立卡片庫</p>';
+                document.getElementById('multi-category-filter').innerHTML = '';
+                return;
+            }
+
+            // 1. 渲染篩選器
+            const filterContainer = document.getElementById('multi-category-filter');
+            filterContainer.innerHTML = '';
+            if (categories.length === 0) {
+                filterContainer.innerHTML = '<span class="text-gray-400 text-sm">尚未建立任何類別。請前往⚙️設定新增。</span>';
+            } else {
+                categories.forEach(cat => {
+                    const label = document.createElement('label');
+                    const isChecked = activeFilters.has(cat);
+                    label.className = `flex items-center gap-2 cursor-pointer border px-3 py-1.5 rounded-full text-sm transition-colors ${isChecked ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'}`;
+                    label.innerHTML = `<input type="checkbox" class="hidden" ${isChecked ? 'checked' : ''} onchange="toggleFilter('${cat}', this.checked)"> <span class="font-medium">${cat}</span>`;
+                    filterContainer.appendChild(label);
+                });
+            }
+
+            // 2. 渲染特別企劃
+            const specialListEl = document.getElementById('special-list');
+            specialListEl.innerHTML = '';
+            const specialCats = [
+                { name: '❤️ 我的收藏', action: () => openSpecialView('我的收藏') },
+                { name: '🎲 隨機抽考', action: () => openSpecialView('隨機') },
+                { name: '📅 每日複習', action: () => openSpecialView('每日卡片') }
+            ];
+            specialCats.forEach(cat => {
+                const btn = document.createElement('button');
+                btn.className = "bg-white p-5 rounded-xl shadow-sm hover:shadow-md transition transform hover:-translate-y-1 font-bold text-gray-700 text-center border-2 border-transparent hover:border-indigo-400";
+                btn.innerText = cat.name; btn.onclick = cat.action; specialListEl.appendChild(btn);
+            });
+
+            // 3. 渲染獨立類別 (不受篩選器影響，點擊直接進入)
+            const categoryListEl = document.getElementById('category-list');
+            categoryListEl.innerHTML = '';
+            categories.forEach(cat => {
+                const count = cards.filter(j => j.category === cat).length;
+                const btn = document.createElement('button');
+                btn.className = "bg-white p-5 rounded-xl shadow-sm hover:shadow-md transition transform hover:-translate-y-1 border-2 border-transparent hover:border-indigo-400 flex flex-col items-center justify-center";
+                btn.innerHTML = `<span class="font-bold text-gray-700">${cat}</span><span class="text-xs text-gray-400 mt-1">${count} 張</span>`;
+                btn.onclick = () => openDirectCategory(cat); categoryListEl.appendChild(btn);
+            });
+        }
+
+        // 特別企劃：根據篩選器範圍
+        function openSpecialView(type) {
+            document.getElementById('flashcard').classList.remove('flipped');
+            let baseCards = getFilteredCards();
+            
+            if (baseCards.length === 0) {
+                alert("請先在上方勾選至少一個學習範圍！"); return;
+            }
+
+            if (type === '我的收藏') {
+                const uid = currentUser.uid;
+                currentCategoryCards = baseCards.filter(j => j.favs && j.favs[uid]);
+                if (currentCategoryCards.length === 0) { alert("在您勾選的範圍內，沒有收藏任何卡片喔！"); return; }
+                document.getElementById('card-category-title').innerText = "❤️ 我的收藏 (篩選範圍內)";
+            } else if (type === '隨機') {
+                currentCategoryCards = [...baseCards].sort(() => 0.5 - Math.random()); 
+                document.getElementById('card-category-title').innerText = "🎲 隨機抽考 (篩選範圍內)";
+            } else if (type === '每日卡片') {
+                const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
+                currentCategoryCards = [baseCards[dayOfYear % baseCards.length]]; 
+                document.getElementById('card-category-title').innerText = "📅 每日複習";
+            }
+            
+            currentIndex = 0; setCardMode('flashcard'); navigate('card');
+        }
+
+        // 點擊獨立資料夾：忽略篩選，直接進入該分類
+        function openDirectCategory(category) {
+            document.getElementById('flashcard').classList.remove('flipped');
+            currentCategoryCards = cards.filter(j => j.category === category); 
+            document.getElementById('card-category-title').innerText = `📂 ${category}`;
+            if (currentCategoryCards.length === 0) { alert(`「${category}」目前還沒有卡片喔！`); return; }
+            currentIndex = 0; setCardMode('flashcard'); navigate('card');
+        }
+
+        function setCardMode(mode) {
+            currentMode = mode;
+            const btnFlashcard = document.getElementById('btn-mode-flashcard');
+            const btnList = document.getElementById('btn-mode-list');
+            const containerFlashcard = document.getElementById('flashcard-container');
+            const containerList = document.getElementById('list-container');
+
+            if (mode === 'flashcard') {
+                btnFlashcard.className = "px-6 py-2 rounded-full font-bold transition-colors bg-indigo-600 text-white shadow";
+                btnList.className = "px-6 py-2 rounded-full font-bold transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-300";
+                containerFlashcard.classList.remove('hidden'); containerFlashcard.classList.add('flex');
+                containerList.classList.add('hidden'); containerList.classList.remove('flex');
+                updateCardDisplay(true);
+            } else {
+                btnList.className = "px-6 py-2 rounded-full font-bold transition-colors bg-indigo-600 text-white shadow";
+                btnFlashcard.className = "px-6 py-2 rounded-full font-bold transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-300";
+                containerFlashcard.classList.add('hidden'); containerFlashcard.classList.remove('flex');
+                containerList.classList.remove('hidden'); containerList.classList.add('flex');
+                renderListDisplay();
+            }
+        }
+
+        function updateCardDisplay(instant = false) {
+            if(currentCategoryCards.length === 0) return;
+            const center = document.getElementById('flashcard'); const left = document.getElementById('card-left'); const right = document.getElementById('card-right');
+
+            if (instant) { center.classList.add('no-transition'); left.classList.add('no-transition'); right.classList.add('no-transition'); }
+
+            center.className = 'card-base pos-center cursor-pointer perspective-1000' + (instant ? ' no-transition' : '');
+            left.className = 'card-base pos-left cursor-pointer' + (instant ? ' no-transition' : '');
+            right.className = 'card-base pos-right cursor-pointer' + (instant ? ' no-transition' : '');
+
+            if (currentCategoryCards.length > 1) { left.classList.remove('hidden'); right.classList.remove('hidden'); } 
+            else { left.classList.add('hidden'); right.classList.add('hidden'); }
+
+            const currentCard = currentCategoryCards[currentIndex];
+            const prevCardObj = currentCategoryCards[(currentIndex - 1 + currentCategoryCards.length) % currentCategoryCards.length];
+            const nextCardObj = currentCategoryCards[(currentIndex + 1) % currentCategoryCards.length];
+
+            document.getElementById('card-question').innerText = currentCard.question; document.getElementById('card-answer').innerText = currentCard.answer;
+            document.getElementById('card-q-left').innerText = prevCardObj.question; document.getElementById('card-q-right').innerText = nextCardObj.question;
+
+            const applyNote = (cardObj, prefix) => {
+                const el = document.getElementById(`card-note-${prefix}`);
+                if (el) {
+                    if (cardObj.note && cardObj.note.trim() !== '') { el.innerText = `💡 ${cardObj.note}`; el.classList.remove('hidden'); } 
+                    else { el.classList.add('hidden'); }
+                }
+            };
+            applyNote(currentCard, 'center'); applyNote(currentCard, 'center-back'); applyNote(prevCardObj, 'left'); applyNote(nextCardObj, 'right');
+
+            const titleText = document.getElementById('card-category-title').innerText;
+            const isMixedMode = titleText.includes('❤️') || titleText.includes('🎲') || titleText.includes('📅') || titleText.includes('🔍');
+            
+            const applyCategoryBadge = (cardObj, prefix) => {
+                const el = document.getElementById(`card-cat-${prefix}`);
+                if (el) {
+                    if (isMixedMode) { el.innerText = cardObj.category; el.classList.remove('hidden'); } 
+                    else { el.classList.add('hidden'); }
+                }
+            };
+            applyCategoryBadge(currentCard, 'center'); applyCategoryBadge(currentCard, 'center-back'); applyCategoryBadge(prevCardObj, 'left'); applyCategoryBadge(nextCardObj, 'right');
+
+            const uid = currentUser ? currentUser.uid : null;
+            document.getElementById('btn-like').className = (uid && currentCard.likes && currentCard.likes[uid]) ? "flex flex-col items-center text-green-600 transition" : "flex flex-col items-center text-gray-400 hover:text-green-500 transition";
+            document.getElementById('btn-dislike').className = (uid && currentCard.dislikes && currentCard.dislikes[uid]) ? "flex flex-col items-center text-red-600 transition" : "flex flex-col items-center text-gray-400 hover:text-red-500 transition";
+            document.getElementById('btn-fav').className = (uid && currentCard.favs && currentCard.favs[uid]) ? "flex flex-col items-center text-pink-600 transition" : "flex flex-col items-center text-gray-400 hover:text-pink-500 transition";
+
+            if (instant) { void center.offsetWidth; center.classList.remove('no-transition'); left.classList.remove('no-transition'); right.classList.remove('no-transition'); }
+        }
+
+        function toggleInteract(type) {
+            if (!currentUser) return;
+            const uid = currentUser.uid; const currentCardId = currentCategoryCards[currentIndex].id; const cIdx = cards.findIndex(c => c.id === currentCardId);
+            if (!cards[cIdx][type]) cards[cIdx][type] = {};
+            
+            if (cards[cIdx][type][uid]) { delete cards[cIdx][type][uid]; } 
+            else {
+                cards[cIdx][type][uid] = true; 
+                if (type === 'likes' && cards[cIdx].dislikes && cards[cIdx].dislikes[uid]) delete cards[cIdx].dislikes[uid];
+                if (type === 'dislikes' && cards[cIdx].likes && cards[cIdx].likes[uid]) delete cards[cIdx].likes[uid];
+            }
+            currentCategoryCards[currentIndex] = cards[cIdx]; saveData(); updateCardDisplay(true);
+        }
+
+        function renderListDisplay() {
+            const listContainer = document.getElementById('list-container'); listContainer.innerHTML = '';
+            const titleText = document.getElementById('card-category-title').innerText;
+            const isMixedMode = titleText.includes('❤️') || titleText.includes('🎲') || titleText.includes('📅') || titleText.includes('🔍');
+            const uid = currentUser ? currentUser.uid : null;
+
+            currentCategoryCards.forEach(card => {
+                let tagsHtml = '';
+                if (isMixedMode) tagsHtml += `<span class="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded text-xs border border-indigo-100">${card.category}</span> `;
+                if (card.note && card.note.trim() !== '') tagsHtml += `<span class="bg-gray-50 text-gray-400 px-2 py-0.5 rounded text-xs border border-gray-100">💡 ${card.note}</span>`;
+
+                let statusIcon = '';
+                if(uid && card.likes && card.likes[uid]) statusIcon = '✅';
+                if(uid && card.dislikes && card.dislikes[uid]) statusIcon = '❌';
+                if(uid && card.favs && card.favs[uid]) statusIcon += ' ❤️';
+
+                const cardDiv = document.createElement('div'); cardDiv.className = "bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col gap-3 relative";
+                cardDiv.innerHTML = `
+                    <div class="flex items-start gap-2"><span class="bg-indigo-100 text-indigo-600 font-bold px-2 py-1 rounded text-sm mt-0.5 whitespace-nowrap">Q</span><p class="font-semibold text-lg text-gray-800">${card.question}</p></div>
+                    <div class="flex items-start gap-2 border-t pt-3"><span class="bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded text-sm mt-0.5 whitespace-nowrap">A</span><p class="font-medium text-gray-600">${card.answer}</p></div>
+                    <div class="flex justify-between items-center text-xs text-gray-400 mt-2 border-t pt-2 border-gray-50"><div>${tagsHtml}</div><div class="text-sm tracking-widest">${statusIcon}</div></div>`;
+                listContainer.appendChild(cardDiv);
+            });
+        }
+
+        function toggleCard() { document.getElementById('flashcard').classList.toggle('flipped'); }
+        function nextCard() { 
+            if(isAnimating || currentCategoryCards.length <= 1) return; isAnimating = true;
+            const center = document.getElementById('flashcard'); const right = document.getElementById('card-right');
+            center.classList.remove('pos-center'); center.classList.add('pos-left'); right.classList.remove('pos-right'); right.classList.add('pos-center'); center.classList.remove('flipped');
+            setTimeout(() => { currentIndex = (currentIndex + 1) % currentCategoryCards.length; updateCardDisplay(true); isAnimating = false; }, 300);
+        }
+        function prevCard() { 
+            if(isAnimating || currentCategoryCards.length <= 1) return; isAnimating = true;
+            const center = document.getElementById('flashcard'); const left = document.getElementById('card-left');
+            center.classList.remove('pos-center'); center.classList.add('pos-right'); left.classList.remove('pos-left'); left.classList.add('pos-center'); center.classList.remove('flipped');
+            setTimeout(() => { currentIndex = (currentIndex - 1 + currentCategoryCards.length) % currentCategoryCards.length; updateCardDisplay(true); isAnimating = false; }, 300);
+        }
+
+        let touchStartX = 0; let touchEndX = 0;
+        const flashcardContainer = document.getElementById('flashcard-container');
+        flashcardContainer.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].clientX; }, {passive: true});
+        flashcardContainer.addEventListener('touchend', e => {
+            touchEndX = e.changedTouches[0].clientX;
+            if(currentMode === 'flashcard') { const threshold = 50; if (touchStartX - touchEndX > threshold) nextCard(); if (touchEndX - touchStartX > threshold) prevCard(); }
+        }, {passive: true});
+
+        function handleAuthClick() { if (currentUser) { if(confirm("確定要登出嗎？")) userLogout(); } else { document.getElementById('login-modal').classList.remove('hidden'); } }
+        function closeLoginModal() { document.getElementById('login-modal').classList.add('hidden'); }
+        function googleLogin() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider).catch((error) => { alert("Google 登入失敗：" + error.message); });
+        }
+        function userLogout() { if (currentUser) auth.signOut(); }
+
+        // ==========================================
+        // 後台管理
+        // ==========================================
+        function renderAdmin() {
+            const categoryListContainer = document.getElementById('admin-category-list'); categoryListContainer.innerHTML = '';
+            categories.forEach((cat, index) => {
+                const badge = document.createElement('div'); badge.className = "flex items-center bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm shadow-sm border border-purple-200";
+                badge.innerHTML = `<span contenteditable="true" onblur="updateCategoryName(${index}, this)" class="outline-none focus:bg-white focus:ring-2 focus:ring-purple-300 px-1 rounded cursor-text truncate max-w-[150px]">${cat}</span><button onclick="deleteCategory(${index})" class="ml-2 text-purple-400 hover:text-red-500 font-bold leading-none text-lg transition-colors">&times;</button>`;
+                categoryListContainer.appendChild(badge);
+            });
+
+            const selectEl = document.getElementById('add-category-select'); selectEl.innerHTML = '<option value="" disabled selected>請選擇類別...</option>';
+            categories.forEach(cat => { const opt = document.createElement('option'); opt.value = cat; opt.innerText = cat; selectEl.appendChild(opt); });
+
+            const filterEl = document.getElementById('admin-filter-category'); const currentFilter = filterEl ? filterEl.value : 'all';
+            if(filterEl) {
+                filterEl.innerHTML = '<option value="all">顯示全部類別</option>';
+                categories.forEach(cat => { const opt = document.createElement('option'); opt.value = cat; opt.innerText = cat; if(cat === currentFilter) opt.selected = true; filterEl.appendChild(opt); });
+            }
+
+            const searchVal = document.getElementById('admin-search-input') ? document.getElementById('admin-search-input').value.toLowerCase() : '';
+            const sortVal = document.getElementById('admin-sort-select') ? document.getElementById('admin-sort-select').value : 'newest';
+            let mappedCards = cards.map((c, idx) => ({ ...c, originalIndex: idx }));
+
+            if (currentFilter !== 'all') mappedCards = mappedCards.filter(c => c.category === currentFilter);
+            if (searchVal) mappedCards = mappedCards.filter(c => c.question.toLowerCase().includes(searchVal) || c.answer.toLowerCase().includes(searchVal) || (c.note && c.note.toLowerCase().includes(searchVal)));
+
+            if (sortVal === 'newest') mappedCards.sort((a, b) => b.id - a.id);
+            else if (sortVal === 'oldest') mappedCards.sort((a, b) => a.id - b.id);
+
+            const tbody = document.getElementById('admin-table-body'); tbody.innerHTML = '';
+            mappedCards.forEach(c => {
+                const origIdx = c.originalIndex; const catOptions = categories.map(cat => `<option value="${cat}" ${cat === c.category ? 'selected' : ''}>${cat}</option>`).join('');
+                const noteText = c.note || '';
+                
+                const tr = document.createElement('tr'); tr.className = "border-b hover:bg-gray-50 transition-colors";
+                tr.innerHTML = `
+                    <td class="p-2 border text-gray-700">
+                        <select onchange="updateCardCategory(${origIdx}, this)" class="w-full bg-transparent outline-none focus:ring-2 focus:ring-indigo-300 rounded p-1 cursor-pointer border border-gray-200 hover:bg-white mb-1">${catOptions}</select>
+                    </td>
+                    <td class="p-2 border font-medium outline-none focus:bg-indigo-50 focus:ring-2 focus:ring-indigo-300 cursor-text transition-colors rounded-sm" contenteditable="true" onblur="updateCardInline(${origIdx}, 'question', this)">${c.question}</td>
+                    <td class="p-2 border text-gray-600 outline-none focus:bg-indigo-50 focus:ring-2 focus:ring-indigo-300 cursor-text transition-colors rounded-sm" contenteditable="true" onblur="updateCardInline(${origIdx}, 'answer', this)">${c.answer}</td>
+                    <td class="p-2 border text-gray-500 text-center outline-none focus:bg-indigo-50 focus:ring-2 focus:ring-indigo-300 cursor-text transition-colors rounded-sm text-xs" contenteditable="true" onblur="updateCardInline(${origIdx}, 'note', this)">${noteText}</td>
+                    <td class="p-2 border text-center whitespace-nowrap"><button onclick="deleteCard(${origIdx})" class="text-red-500 hover:text-red-700 font-bold bg-red-50 hover:bg-red-100 px-3 py-1 rounded transition">刪除</button></td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function updateCardCategory(index, element) { const newCat = element.value; if (cards[index].category !== newCat) { cards[index].category = newCat; saveData(); renderAdmin(); } }
+        function updateCategoryName(index, element) {
+            const newName = element.innerText.trim(); const oldName = categories[index]; if (!newName) { element.innerText = oldName; return; }
+            if (newName !== oldName) {
+                if (categories.includes(newName) && categories.indexOf(newName) !== index) { alert("此類別名稱已存在！"); element.innerText = oldName; return; }
+                categories[index] = newName; let affectedCards = 0;
+                cards.forEach(c => { if (c.category === oldName) { c.category = newName; affectedCards++; } });
+                if(activeFilters.has(oldName)) { activeFilters.delete(oldName); activeFilters.add(newName); }
+                saveData(); renderAdmin();
+            }
+        }
+        function deleteCategory(index) {
+            const catName = categories[index]; const cardsInCat = cards.filter(c => c.category === catName).length;
+            if (cardsInCat > 0 && !confirm(`「${catName}」底下還有 ${cardsInCat} 張卡片。確定要移除標籤嗎？`)) return;
+            if (cardsInCat === 0 && !confirm(`確定要刪除「${catName}」嗎？`)) return;
+            categories.splice(index, 1); if(activeFilters.has(catName)) activeFilters.delete(catName); saveData(); renderAdmin();
+        }
+        function addNewCategory() {
+            const newCat = document.getElementById('add-new-category-input').value.trim();
+            if (!newCat) return; if (categories.includes(newCat)) { alert("這個類別已經存在囉！"); return; }
+            categories.push(newCat); activeFilters.add(newCat); saveData(); document.getElementById('add-new-category-input').value = ''; renderAdmin();
+        }
+        
+        function addCard() {
+            const category = document.getElementById('add-category-select').value; const question = document.getElementById('add-question').value.trim();
+            const answer = document.getElementById('add-answer').value.trim(); const note = document.getElementById('add-note').value.trim();
+            if (!category || !question || !answer) { alert("請填寫分類、正面與背面內容！"); return; }
+            
+            let dupIdx = findDuplicateIndex(question, answer);
+            if (dupIdx !== -1) { 
+                if(confirm("這張卡片似乎已經存在囉！要直接覆蓋更新它嗎？")) {
+                    cards[dupIdx].category = category; cards[dupIdx].question = question; cards[dupIdx].answer = answer; cards[dupIdx].note = note;
+                    saveData(); document.getElementById('add-question').value = ''; document.getElementById('add-answer').value = ''; document.getElementById('add-note').value = ''; renderAdmin();
+                }
+                return; 
+            }
+            
+            cards.push({ id: Date.now(), category, question, answer, note }); saveData();
+            document.getElementById('add-question').value = ''; document.getElementById('add-answer').value = ''; document.getElementById('add-note').value = ''; renderAdmin();
+        }
+        function updateCardInline(index, field, element) {
+            const newValue = element.innerText.trim(); const oldValue = cards[index][field] || '';
+            if (!newValue && field !== 'note') { element.innerText = oldValue; return; }
+            if (newValue !== oldValue) {
+                cards[index][field] = newValue;
+                if (field === 'category' && !categories.includes(newValue)) { categories.push(newValue); activeFilters.add(newValue); }
+                saveData(); renderAdmin(); 
+            }
+        }
+        function deleteCard(index) { if (confirm("確定刪除這張卡片嗎？")) { cards.splice(index, 1); saveData(); renderAdmin(); } }
+        function clearAllData() { if(confirm("警告：這將會清除您所有的卡片與類別！確定嗎？")) { cards = []; categories = []; activeFilters.clear(); saveData(); renderAdmin(); } }
+
+        function importCSV() {
+            const fileInput = document.getElementById('csv-file'); const file = fileInput.files[0]; if (!file) { alert("請先選擇 CSV 檔案。"); return; }
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result; const rows = text.split('\n'); 
+                let addedCount = 0; let updatedCount = 0; let skippedCount = 0;
+                const re = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/;
+                let duplicates = []; let newCards = [];
+                
+                rows.forEach(row => {
+                    const cols = row.split(re).map(s => s.replace(/(^"|"$)/g, '').replace(/""/g, '"').trim());
+                    if (cols.length >= 3) {
+                        const cat = cols[0], q = cols[1], a = cols[2]; const note = cols[3] !== undefined ? cols[3] : '';
+                        if (cat && q && a && cat !== '類別') { // 避免標題列
+                            let dupIdx = findDuplicateIndex(q, a);
+                            if (dupIdx !== -1) duplicates.push({ idx: dupIdx, cat, q, a, note });
+                            else newCards.push({ cat, q, a, note });
+                        }
+                    }
+                });
+
+                if (duplicates.length > 0) {
+                    let overwrite = confirm(`匯入的資料中發現 ${duplicates.length} 張重複卡片，是否要覆蓋原本的資料？\n(按「確定」將覆蓋更新，「取消」則略過重複項目)`);
+                    if (overwrite) {
+                        duplicates.forEach(d => { cards[d.idx].category = d.cat; cards[d.idx].question = d.q; cards[d.idx].answer = d.a; cards[d.idx].note = d.note; updatedCount++; });
+                    } else skippedCount = duplicates.length;
+                }
+
+                newCards.forEach(n => {
+                    cards.push({ id: Date.now() + Math.random(), category: n.cat, question: n.q, answer: n.a, note: n.note });
+                    if (!categories.includes(n.cat)) { categories.push(n.cat); activeFilters.add(n.cat); }
+                    addedCount++;
+                });
+
+                if (addedCount > 0 || updatedCount > 0) { saveData(); renderAdmin(); alert(`匯入完成！\n新增：${addedCount} 張\n更新：${updatedCount} 張\n略過：${skippedCount} 張`); } 
+                else if (skippedCount > 0) { alert(`匯入完成！但 ${skippedCount} 張皆已重複，無新增任何資料。`); } 
+                else { alert("匯入失敗，請檢查格式。"); }
+                fileInput.value = ""; 
+            }; reader.readAsText(file);
+        }
+
+        function exportCSV() {
+            let csvContent = "\uFEFF"; csvContent += "類別,正面(Q),背面(A),備註\n";
+            cards.forEach(c => {
+                const escapeCSV = str => `"${String(str || '').replace(/"/g, '""')}"`; csvContent += `${escapeCSV(c.category)},${escapeCSV(c.question)},${escapeCSV(c.answer)},${escapeCSV(c.note || '')}\n`;
+            });
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob);
+            const link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", "flashcards_export.csv"); document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+
+        // ==========================================
+        // 統計圖表 (根據勾選範圍)
+        // ==========================================
+        function renderStats() {
+            // 取出目前篩選範圍的卡片
+            let scopedCards = getFilteredCards();
+            
+            let tLikes = 0, tDislikes = 0, tFavs = 0;
+            const uid = currentUser ? currentUser.uid : null;
+
+            if (uid) {
+                scopedCards.forEach(c => { 
+                    if (c.likes && c.likes[uid]) tLikes++;
+                    if (c.dislikes && c.dislikes[uid]) tDislikes++;
+                    if (c.favs && c.favs[uid]) tFavs++;
+                });
+            }
+
+            document.getElementById('stat-total').innerText = scopedCards.length;
+            document.getElementById('stat-likes').innerText = tLikes;
+            document.getElementById('stat-dislikes').innerText = tDislikes;
+            document.getElementById('stat-favs').innerText = tFavs;
+
+            const ctx = document.getElementById('leaderboardChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+
+            const counts = {}; 
+            // 只顯示有被勾選的 categories
+            activeFilters.forEach(c => counts[c] = 0); 
+            scopedCards.forEach(c => { counts[c.category] = (counts[c.category] || 0) + 1; });
+            
+            const labels = Object.keys(counts); 
+            const data = Object.values(counts);
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: labels, datasets: [{ label: '卡片數量', data: data, backgroundColor: 'rgba(99, 102, 241, 0.6)', borderRadius: 4 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false, 
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
