@@ -716,7 +716,7 @@
             currentExamCard = examQueue[0];
             document.getElementById('exam-progress').innerText = `佇列剩餘: ${examQueue.length} 張`;
             
-            examCardInner.classList.remove('flipped');
+            examWrapper.classList.remove('flipped');
             examWrapper.style.transition = 'none';
             examWrapper.style.transform = 'translate(0px, 0px) rotate(0deg)';
             document.getElementById('hint-left-ok').style.opacity = '0';
@@ -779,7 +779,7 @@
             
             // 放寬點擊判定：只要移動距離小於 20px，且觸碰時間短於 400ms，就視為點擊翻面
             if (Math.abs(currentX) < 20 && dragDuration < 400) {
-                examCardInner.classList.toggle('flipped');
+                examWrapper.classList.toggle('flipped');
                 currentX = 0;
                 examWrapper.style.transform = 'translate(0px, 0px) rotate(0deg)';
                 return;
