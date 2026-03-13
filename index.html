@@ -33,7 +33,7 @@
 </head>
 <body class="bg-slate-50 text-gray-800 font-sans flex flex-col min-h-screen">
 
-    <header class="bg-indigo-600 text-white p-4 shadow-md flex justify-between items-center z-10 sticky top-0 shrink-0 h-16">
+    <header class="bg-indigo-600 text-white p-4 shadow-md flex justify-between items-center z-50 sticky top-0 shrink-0 h-16">
         <h1 class="text-2xl font-bold cursor-pointer whitespace-nowrap" onclick="navigate('home')">📝 Wei's Flashcards</h1>
         
         <div class="flex items-center gap-3 relative">
@@ -78,7 +78,7 @@
 
             <div class="w-full">
                 <h3 class="text-xl font-bold text-gray-700 mb-4 flex items-center gap-2"><span class="text-2xl">✨</span> 特別企劃 (依照勾選範圍)</h3>
-                <div id="special-list" class="grid grid-cols-1 sm:grid-cols-4 gap-4"></div>
+                <div id="special-list" class="grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
             </div>
             <div class="w-full">
                 <h3 class="text-xl font-bold text-gray-700 mb-4 flex items-center gap-2">📂 個別類別 (直接進入)</h3>
@@ -180,8 +180,19 @@
                 </div>
             </div>
 
-            <div id="exam-result-area" class="hidden w-full max-w-md bg-white p-6 rounded-2xl shadow-xl flex-col items-center border border-indigo-100">
-                <div class="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center text-3xl mb-4">🏆</div>
+            <div id="exam-result-area" class="hidden w-full max-w-md bg-white p-6 rounded-2xl shadow-xl flex-col items-center border border-indigo-100 mt-4">
+                
+                <div class="relative w-32 h-32 mb-4">
+                    <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                        <path class="text-gray-100" stroke-width="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path id="exam-score-circle" class="text-indigo-500 transition-all duration-1000 ease-out" stroke-width="3.5" stroke-dasharray="0, 100" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center">
+                        <span id="exam-score-text" class="text-4xl font-black text-indigo-600">0</span>
+                        <span class="text-xs text-gray-500 font-bold mt-1">分</span>
+                    </div>
+                </div>
+
                 <h2 class="text-2xl font-bold text-indigo-700 mb-2">測驗完成！</h2>
                 <p class="text-gray-500 mb-6 text-sm text-center">本次測驗共 <span id="exam-result-total" class="font-bold text-indigo-600">0</span> 張卡片。<br>以下是您的弱點排行榜：</p>
                 
@@ -333,7 +344,6 @@
             const specialListEl = document.getElementById('special-list'); specialListEl.innerHTML = '';
             const specialCats = [
                 { name: '🚀 考試模式', action: () => startExamMode(), color: 'border-indigo-500 bg-indigo-50 text-indigo-700' },
-                { name: '🎲 隨機抽考', action: () => openSpecialView('隨機'), color: 'border-transparent hover:border-indigo-400 text-gray-700' },
                 { name: '❤️ 我的收藏', action: () => openSpecialView('我的收藏'), color: 'border-transparent hover:border-pink-400 text-gray-700' },
                 { name: '📅 每日複習', action: () => openSpecialView('每日卡片'), color: 'border-transparent hover:border-indigo-400 text-gray-700' }
             ];
@@ -362,9 +372,6 @@
                 const uid = currentUser.uid; currentCategoryCards = baseCards.filter(j => j.favs && j.favs[uid]);
                 if (currentCategoryCards.length === 0) { alert("在您勾選的範圍內，沒有收藏任何卡片喔！"); return; }
                 document.getElementById('card-category-title').innerText = "❤️ 我的收藏 (篩選範圍內)";
-            } else if (type === '隨機') {
-                currentCategoryCards = [...baseCards].sort(() => 0.5 - Math.random()); 
-                document.getElementById('card-category-title').innerText = "🎲 隨機抽考 (篩選範圍內)";
             } else if (type === '每日卡片') {
                 const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
                 currentCategoryCards = [baseCards[dayOfYear % baseCards.length]]; 
@@ -398,9 +405,9 @@
         // ==========================================
         // 🚀 考試模式核心邏輯 (Tinder Swipe)
         // ==========================================
-        let examQueue = [];          // 考試佇列
-        let examOriginalDeck = [];   // 原始完整牌組 (結算用)
-        let examMistakeCount = {};   // 紀錄不熟次數 { cardId: count }
+        let examQueue = [];          
+        let examOriginalDeck = [];   
+        let examMistakeCount = {};   
         let currentExamCard = null;
 
         let isDragging = false;
@@ -408,14 +415,13 @@
         let currentX = 0;
         let dragStartTime = 0;
 
-        // 初始化滑動監聽器
         const examWrapper = document.getElementById('exam-card-wrapper');
         const examCardInner = document.getElementById('exam-card');
         
         examWrapper.addEventListener('mousedown', dragStart);
         examWrapper.addEventListener('touchstart', dragStart, {passive: true});
         document.addEventListener('mousemove', dragMove);
-        document.addEventListener('touchmove', dragMove, {passive: false}); // passive false 才能 preventDefault 阻擋畫面滾動
+        document.addEventListener('touchmove', dragMove, {passive: false}); 
         document.addEventListener('mouseup', dragEnd);
         document.addEventListener('touchend', dragEnd);
 
@@ -423,7 +429,6 @@
             let baseCards = getFilteredCards();
             if (baseCards.length === 0) { alert("請先在首頁勾選至少一個學習範圍！"); return; }
             
-            // 洗牌打亂順序
             examOriginalDeck = [...baseCards];
             examQueue = [...baseCards].sort(() => 0.5 - Math.random());
             examMistakeCount = {};
@@ -443,14 +448,12 @@
             currentExamCard = examQueue[0];
             document.getElementById('exam-progress').innerText = `佇列剩餘: ${examQueue.length} 張`;
             
-            // 重置卡片狀態
             examCardInner.classList.remove('flipped');
             examWrapper.style.transition = 'none';
             examWrapper.style.transform = 'translate(0px, 0px) rotate(0deg)';
             document.getElementById('hint-left-ok').style.opacity = '0';
             document.getElementById('hint-right-bad').style.opacity = '0';
             
-            // 填入內容
             document.getElementById('exam-cat-front').innerText = currentExamCard.category;
             document.getElementById('exam-cat-back').innerText = currentExamCard.category;
             document.getElementById('exam-question').innerText = currentExamCard.question;
@@ -464,7 +467,6 @@
                 noteEl.classList.add('hidden');
             }
 
-            // 給一點緩衝時間恢復 transition
             setTimeout(() => { examWrapper.style.transition = 'transform 0.3s ease-out'; }, 50);
         }
 
@@ -478,26 +480,21 @@
 
         function dragMove(e) {
             if (!isDragging) return;
-            // 如果在拖曳，禁止畫面上下滾動
             if(e.type === 'touchmove') e.preventDefault(); 
             
             const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
             currentX = clientX - startX;
             
-            // 計算旋轉角度 (稍微傾斜)
             const rotate = currentX * 0.05;
             examWrapper.style.transform = `translateX(${currentX}px) rotate(${rotate}deg)`;
 
-            // 控制「✅ OK」與「❌ 不熟」的透明度
-            const leftHint = document.getElementById('hint-left-ok'); // 左滑(OK)的章顯示在右上角
-            const rightHint = document.getElementById('hint-right-bad'); // 右滑(Bad)的章顯示在左上角
+            const leftHint = document.getElementById('hint-left-ok'); 
+            const rightHint = document.getElementById('hint-right-bad'); 
             
             if (currentX < -20) {
-                // 往左滑 (OK)
                 leftHint.style.opacity = Math.min(Math.abs(currentX) / 80, 1);
                 rightHint.style.opacity = 0;
             } else if (currentX > 20) {
-                // 往右滑 (Bad)
                 rightHint.style.opacity = Math.min(Math.abs(currentX) / 80, 1);
                 leftHint.style.opacity = 0;
             } else {
@@ -512,21 +509,20 @@
             const dragDuration = Date.now() - dragStartTime;
             examWrapper.style.transition = 'transform 0.3s ease-out, opacity 0.3s';
             
-            // 判斷是否只是「點擊」想要翻面
-            if (Math.abs(currentX) < 10 && dragDuration < 300) {
+            // 放寬點擊判定：只要移動距離小於 20px，且觸碰時間短於 400ms，就視為點擊翻面
+            if (Math.abs(currentX) < 20 && dragDuration < 400) {
                 examCardInner.classList.toggle('flipped');
                 currentX = 0;
                 examWrapper.style.transform = 'translate(0px, 0px) rotate(0deg)';
                 return;
             }
 
-            const threshold = 80; // 滑動觸發的距離門檻
+            const threshold = 80; 
             if (currentX < -threshold) {
-                handleExamSwipeComplete('left'); // 左滑 OK
+                handleExamSwipeComplete('left'); 
             } else if (currentX > threshold) {
-                handleExamSwipeComplete('right'); // 右滑 不熟
+                handleExamSwipeComplete('right'); 
             } else {
-                // 距離不夠，彈回原位
                 examWrapper.style.transform = 'translate(0px, 0px) rotate(0deg)';
                 document.getElementById('hint-left-ok').style.opacity = '0';
                 document.getElementById('hint-right-bad').style.opacity = '0';
@@ -534,9 +530,7 @@
             currentX = 0;
         }
 
-        // 完成滑動並判定
         function handleExamSwipeComplete(direction) {
-            // 動畫讓卡片飛出螢幕
             const xOffset = direction === 'left' ? -500 : 500;
             const rotate = direction === 'left' ? -30 : 30;
             examWrapper.style.transform = `translateX(${xOffset}px) rotate(${rotate}deg)`;
@@ -544,53 +538,55 @@
             if(direction === 'left') document.getElementById('hint-left-ok').style.opacity = '1';
             if(direction === 'right') document.getElementById('hint-right-bad').style.opacity = '1';
 
-            // 等待動畫結束後處理資料
             setTimeout(() => {
                 processExamResult(direction);
             }, 300);
         }
 
         function processExamResult(direction) {
-            const card = examQueue.shift(); // 拿出最前面的卡片
+            const card = examQueue.shift(); 
 
             if (direction === 'right') {
-                // ❌ 右滑不熟：增加錯誤次數，並塞回佇列的最後面
                 examMistakeCount[card.id] = (examMistakeCount[card.id] || 0) + 1;
                 examQueue.push(card);
             } else {
-                // ✅ 左滑熟記：如果從來沒錯過，預設為 0，並讓它正式從佇列中移除
                 if (examMistakeCount[card.id] === undefined) {
                     examMistakeCount[card.id] = 0;
                 }
-                
-                // (選項) 如果你想同步把「熟記」寫入個人資料庫，可解除下方註解
-                /*
-                if(currentUser) {
-                    const cIdx = cards.findIndex(c => c.id === card.id);
-                    if(cIdx !== -1) {
-                        if(!cards[cIdx].likes) cards[cIdx].likes = {};
-                        cards[cIdx].likes[currentUser.uid] = true;
-                        if(cards[cIdx].dislikes) delete cards[cIdx].dislikes[currentUser.uid];
-                    }
-                }
-                */
             }
 
             loadNextExamCard();
         }
 
         function finishExam() {
-            // (選項) 考試結束儲存最新熟記狀態
-            // saveData(); 
-            
             document.getElementById('exam-active-area').classList.add('hidden');
             document.getElementById('exam-result-area').classList.remove('hidden');
             document.getElementById('exam-result-total').innerText = examOriginalDeck.length;
             
+            // 計算分數並產生動畫
+            let totalMistakes = Object.values(examMistakeCount).reduce((sum, val) => sum + val, 0);
+            let score = Math.round((examOriginalDeck.length / (examOriginalDeck.length + totalMistakes)) * 100);
+            
+            setTimeout(() => {
+                const circle = document.getElementById('exam-score-circle');
+                if(circle) circle.setAttribute('stroke-dasharray', `${score}, 100`);
+                
+                let currentNum = 0;
+                let stepTime = Math.abs(Math.floor(1000 / (score || 1)));
+                let timer = setInterval(() => {
+                    if(currentNum >= score) {
+                        document.getElementById('exam-score-text').innerText = score;
+                        clearInterval(timer);
+                    } else {
+                        currentNum++;
+                        document.getElementById('exam-score-text').innerText = currentNum;
+                    }
+                }, stepTime);
+            }, 100);
+
             const rankContainer = document.getElementById('exam-ranking-list');
             rankContainer.innerHTML = '';
 
-            // 根據不熟(右滑)次數，由大到小排序
             let sortedDeck = [...examOriginalDeck].sort((a, b) => {
                 const countA = examMistakeCount[a.id] || 0;
                 const countB = examMistakeCount[b.id] || 0;
@@ -602,6 +598,9 @@
                 const medal = index === 0 && mistakes > 0 ? '🥇' : index === 1 && mistakes > 0 ? '🥈' : index === 2 && mistakes > 0 ? '🥉' : '🔹';
                 const statusColor = mistakes > 2 ? 'text-red-600 bg-red-50 border-red-200' : mistakes > 0 ? 'text-orange-600 bg-orange-50 border-orange-200' : 'text-green-600 bg-green-50 border-green-200';
                 
+                const isFav = currentUser && card.favs && card.favs[currentUser.uid];
+                const favIcon = isFav ? '❤️' : '🤍';
+                
                 const item = document.createElement('div');
                 item.className = `flex justify-between items-center p-3 rounded-lg border shadow-sm ${statusColor}`;
                 item.innerHTML = `
@@ -612,13 +611,35 @@
                             <p class="text-xs opacity-75 truncate" title="${card.answer}">${card.answer}</p>
                         </div>
                     </div>
-                    <div class="flex flex-col items-end shrink-0 pl-2">
-                        <span class="font-bold text-lg">${mistakes}</span>
-                        <span class="text-[10px] uppercase tracking-wider opacity-70">不熟次數</span>
+                    <div class="flex items-center shrink-0 pl-2 gap-3 border-l border-white/50">
+                        <div class="flex flex-col items-center w-10">
+                            <span class="font-bold text-lg leading-none">${mistakes}</span>
+                            <span class="text-[10px] uppercase tracking-wider opacity-80 mt-1">不熟</span>
+                        </div>
+                        <button id="fav-btn-exam-${card.id}" onclick="toggleFavFromExam(${card.id})" class="text-2xl hover:scale-110 transition-transform">${favIcon}</button>
                     </div>
                 `;
                 rankContainer.appendChild(item);
             });
+        }
+
+        // 考試排行榜中的收藏功能
+        function toggleFavFromExam(cardId) {
+            if (!currentUser) return;
+            const uid = currentUser.uid;
+            const cIdx = cards.findIndex(c => c.id === Number(cardId));
+            if(cIdx === -1) return;
+            
+            if (!cards[cIdx].favs) cards[cIdx].favs = {};
+            if (cards[cIdx].favs[uid]) {
+                delete cards[cIdx].favs[uid];
+            } else {
+                cards[cIdx].favs[uid] = true;
+            }
+            saveData();
+            
+            const btn = document.getElementById(`fav-btn-exam-${cardId}`);
+            if(btn) btn.innerText = cards[cIdx].favs[uid] ? '❤️' : '🤍';
         }
 
         // ==========================================
