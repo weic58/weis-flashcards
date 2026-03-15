@@ -682,6 +682,7 @@
         let startX = 0;
         let currentX = 0;
         let dragStartTime = 0;
+        let examLastTouchTime = 0; // 新增這行：記錄最後一次手指觸控的時間
 
         const examWrapper = document.getElementById('exam-card-wrapper');
         const examCardInner = document.getElementById('exam-card');
@@ -740,6 +741,12 @@
 
         function dragStart(e) {
             if (examQueue.length === 0) return;
+            
+            // --- 新增防呆機制：忽略手機產生的假滑鼠事件 ---
+            if (e.type === 'touchstart') examLastTouchTime = Date.now();
+            if (e.type === 'mousedown' && (Date.now() - examLastTouchTime < 500)) return;
+            // ------------------------------------------
+
             isDragging = true;
             dragStartTime = Date.now();
             startX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
